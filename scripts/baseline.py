@@ -66,8 +66,14 @@ def gemini(model, image):
         "generationConfig": {"temperature": 0},
     }
     r = http(url, body, {"x-goog-api-key": key})
-    parts = r["candidates"][0].get("content", {}).get("parts", [])
-    return "".join(p.get("text", "") for p in parts), r.get("usageMetadata")
+    cand = (r.get("candidates") or [{}])[0]
+    parts = cand.get("content", {}).get("parts", [])
+    text = "".join(p.get("text", "") for p in parts)
+    if not text.strip():
+        # Empty output with HTTP 200 happens (e.g. finishReason RECITATION on famous text). Never save it as a result.
+        raise RuntimeError(f"empty output, finishReason={cand.get('finishReason')} "
+                           f"promptFeedback={r.get('promptFeedback')}")
+    return text, r.get("usageMetadata")
 
 
 def openrouter(model, image):

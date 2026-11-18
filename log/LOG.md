@@ -33,3 +33,12 @@ Daily human notes. Full Claude Code transcripts: `~/.claude/projects/-home-tahir
 - **Design decisions from this:**
   1. Use model disagreement as the trust signal. Flash and Flash-Lite disagreed exactly at Flash-Lite's errors.
   2. Normalize spelling variants (ھ/ہ, quote styles) *before* comparing, so style differences don't flag every line. Keep the book's original spelling in the output.
+
+### Batch 2 (15 pages total, 2 models) + review tool
+- Built `src/prep.py`: splits two-page spreads at the gutter (right page first) and blanks the bottom watermark band.
+- Built `src/compare.py`: word-level alignment of two transcriptions after folding spelling variants (ھ/ہ, ی/ي, quote styles). With folding, page 149 dropped to 4 real disagreements.
+- **Changed my success metric:** intent.md said "flag ≤ 25% of lines". On Nastaliq, up to 68% of lines contain at least one disagreement, but only 3–8% of *words* do. Word-level flagging is the honest unit.
+- Agreement between Gemini 3.5 Flash and 3.1 Flash-Lite: Naskh pages 95–98.5%, Nastaliq pages 92–98%.
+- **What failed:** Gemini 3.5 Flash returned **empty text with HTTP 200** for page 51 (it opens with a famous couplet). The script saved it as a successful result. A retry worked, so it's intermittent. Fix: empty output is now an error, never a result. Silent failures matter more than loud ones.
+- New hard cases in the set: bleed-through from the back of the page (Taubat p.219), and poetry couplets with speaker labels (Umrao p.21).
+- Built `scripts/review.py`: a ground-truth review page (scan | editable text, disagreements highlighted). Next: I hand-correct 15 pages.
