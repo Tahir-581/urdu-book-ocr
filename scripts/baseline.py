@@ -36,14 +36,22 @@ def load_env():
                     os.environ.setdefault(k.strip(), v.strip())
 
 
-def http(url, body=None, headers=None, timeout=180):
+def http(url, body=None, headers=None, timeout=180, retries=4):
+    """POST/GET JSON. Retries 429/500/503 with exponential backoff (free tiers are flaky)."""
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **(headers or {})})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"HTTP {e.code}: {e.read().decode()[:400]}") from None
+    for attempt in range(retries + 1):
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **(headers or {})})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            msg = e.read().decode()[:400]
+            if e.code in (429, 500, 502, 503) and attempt < retries:
+                wait = min(60, 5 * 2 ** attempt)
+                print(f"    retry in {wait}s after HTTP {e.code}", file=sys.stderr)
+                time.sleep(wait)
+                continue
+            raise RuntimeError(f"HTTP {e.code}: {msg}") from None
 
 
 def b64(path):
