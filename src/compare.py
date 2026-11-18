@@ -16,7 +16,7 @@ FOLD = str.maketrans({
     "”": '"', "“": '"', "’": '"', "‘": '"', "«": '"', "»": '"',
     "۔": ".", "-": ".", "،": ",", "؟": "?",
 })
-ZW = re.compile(r"[‌‍‎‏ً-ٰٟ]")  # zero-width + harakat
+ZW = re.compile("[\u200c\u200d\u200e\u200f\u202a-\u202e\u2066-\u2069\u064b-\u065f\u0670]")  # zero-width, bidi controls, harakat
 
 
 def norm(word: str) -> str:
