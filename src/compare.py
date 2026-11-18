@@ -55,23 +55,37 @@ def compare(text_a: str, text_b: str):
     nb = [norm(w) for w in words_b]
 
     alt = [None] * len(words_a)
+    group = [None] * len(words_a)  # A words from the same disagreement share a group id
     inserted = {}  # index in A before which B has extra words
     sm = SequenceMatcher(None, na, nb, autojunk=False)
-    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+    for gid, (tag, i1, i2, j1, j2) in enumerate(sm.get_opcodes()):
         if tag == "equal":
+            continue
+        # Space-only differences ("نا کام" vs "ناکام") are not real disagreements.
+        if tag == "replace" and "".join(na[i1:i2]) == "".join(nb[j1:j2]):
             continue
         b_span = " ".join(words_b[j1:j2])
         if tag == "insert":
             inserted.setdefault(i1, []).append(b_span)
             continue
         for k in range(i1, i2):
-            alt[k] = b_span if k == i1 else ""  # whole B span shown on the first A word
+            alt[k], group[k] = b_span, gid
 
     out = [[] for _ in lines_a]
+    prev_gid = None
     for k, (li, w) in enumerate(words_a):
         if k in inserted:
             out[li].append(("", " ".join(inserted[k])))
-        out[li].append((w, alt[k]))
+            prev_gid = None
+        g = group[k]
+        # Merge consecutive A words of one disagreement (on the same line) into a single chunk.
+        if g is not None and g == prev_gid and out[li] and out[li][-1][1] is not None:
+            out[li][-1] = (out[li][-1][0] + " " + w, out[li][-1][1])
+        elif g is not None and g == prev_gid:
+            out[li].append((w, ""))  # continuation on a new line: B's text already shown on the first chunk
+        else:
+            out[li].append((w, alt[k]))
+        prev_gid = g
     if len(words_a) in inserted and out:
         out[-1].append(("", " ".join(inserted[len(words_a)])))
 
