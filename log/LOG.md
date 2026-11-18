@@ -42,3 +42,17 @@ Daily human notes. Full Claude Code transcripts: `~/.claude/projects/-home-tahir
 - **What failed:** Gemini 3.5 Flash returned **empty text with HTTP 200** for page 51 (it opens with a famous couplet). The script saved it as a successful result. A retry worked, so it's intermittent. Fix: empty output is now an error, never a result. Silent failures matter more than loud ones.
 - New hard cases in the set: bleed-through from the back of the page (Taubat p.219), and poetry couplets with speaker labels (Umrao p.21).
 - Built `scripts/review.py`: a ground-truth review page (scan | editable text, disagreements highlighted). Next: I hand-correct 15 pages.
+
+## Day 2 — 2026-11-19
+
+### Ground truth + first evaluation
+- I hand-corrected 8 pages (2 Naskh, 6 Nastaliq; 2,220 words) using the review page. I had no Urdu keyboard on Linux, so Claude added a phonetic Urdu layout (CRULP) and changed the review page so a click on a flagged word picks model A / model B / type-your-own. Most fixes became one click.
+- Claude wrote `src/evaluate.py`: CER/WER per engine, plus how many of model A's errors the A-vs-B disagreement actually caught.
+- First numbers (before archive.org baseline):
+  - Gemini 3.5 Flash: CER 0.56%, WER 1.67%.
+  - Gemini 3.1 Flash-Lite: CER 1.30%, WER 3.47%.
+  - Nemotron (free): CER 24%.
+  - Disagreement flagging caught 28 of 30 of Flash's errors while flagging only 3.5% of words.
+- **What failed (tool):** the first version of the review page kept a literal `+` from "only model B has this" words in the downloaded text. Caught when it showed up as a fake "silent error"; fixed in the file and the tool.
+- **What failed (me):** one "silent error" was actually *my* ground-truth mistake. I wrote `دور`; the scan clearly shows `ڈور` (kite string). In another spot the models disagreed (`تلکل` vs `نکل`) and I picked A's reading, but the scan looks like `تکل`.
+- **Unlearned:** "the human is the ground truth." A human reviewer choosing between two model readings anchors on them. The fix: zoomed crops for flagged words, and a second pass on disagreements where the reviewer picked a model reading.
