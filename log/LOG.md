@@ -64,3 +64,11 @@ Daily human notes. Full Claude Code transcripts: `~/.claude/projects/-home-tahir
 - **What failed (pipeline design):** the first full run rendered all 99 spreads before sending any page to a model (~9 s each, ~15 min idle). Restarted so each page goes to the models as soon as it's rendered; already-rendered pages were reused.
 - Full *Umrao Jaan Ada* run started: PDF pages 2–100 (page 1 is the cover) = 198 pages.
 - Claude wrote `scripts/reader.py`: a static reader site (scan | text, flagged words highlighted with the other model's reading on tap, full-text search that folds ھ/ہ etc., `.txt` and "text with flags" downloads, phone layout). Checked with headless Chrome screenshots on desktop and phone width.
+
+### Quota wall → choosing a free checker (night)
+- **What failed:** the full run finished Flash-Lite (192/198 pages, ~35 min) but Gemini 3.5 Flash stopped after 3 pages: its free tier is **20 requests/day**, and the earlier 503/timeout retries counted against it. 198 pages would take 10 days.
+- Also: Flash-Lite refused 6 pages with `finishReason=RECITATION`. Google's copyright filter treats *Umrao Jaan Ada* as famous text it must not reproduce, even though it's public domain. A transcription system for classics has to plan around the model refusing the most famous pages.
+- Options I was given: pay ~$7 on OpenRouter for Flash, enable Google billing, or stay free with Flash-Lite as the primary. **I chose to stay free.**
+- Tested free checkers on the 8 ground-truth pages (`docs/checker-choice.md`). **Unlearned:** I expected "a second model" to be enough. Gemini 3.5 Flash-Lite as checker caught only 63% of 3.1 Flash-Lite's errors: same family, same mistakes, so they agree on them. Gemini 3 Flash preview is worse on its own (CER 1.64% vs 1.26%) yet caught 85% (3.2% of words flagged). The checker's value is *failing differently*, not being more accurate.
+- The evaluator took >10 min with 6 models (pure-Python edit distance). Claude replaced it with a bit-parallel algorithm, checked against the old one on 3,000 random cases: 1.6 s.
+- Restarted the book run: A = 3.1 Flash-Lite (reused), B = 3 Flash preview.

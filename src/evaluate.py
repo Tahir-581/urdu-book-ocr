@@ -31,7 +31,8 @@ def words(text):
     return [n for line in lines for w in line.split() if (n := norm(w))]
 
 
-def levenshtein(a, b):
+def levenshtein_slow(a, b):
+    """Reference O(n*m) implementation, kept for the self-test."""
     if len(a) < len(b):
         a, b = b, a
     prev = list(range(len(b) + 1))
@@ -41,6 +42,35 @@ def levenshtein(a, b):
             cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
         prev = cur
     return prev[-1]
+
+
+def levenshtein(a, b):
+    """Edit distance between two sequences (strings or word lists), bit-parallel (Myers/Hyyro).
+    One Python big-int operation per item of b instead of len(a) operations: ~100x faster."""
+    if not a:
+        return len(b)
+    m = len(a)
+    full = (1 << m) - 1
+    top = 1 << (m - 1)
+    peq = {}
+    for i, c in enumerate(a):
+        peq[c] = peq.get(c, 0) | (1 << i)
+    pv, mv, score = full, 0, m
+    for c in b:
+        eq = peq.get(c, 0)
+        xv = eq | mv
+        xh = (((eq & pv) + pv) ^ pv) | eq
+        ph = (mv | ~(xh | pv)) & full
+        mh = pv & xh
+        if ph & top:
+            score += 1
+        elif mh & top:
+            score -= 1
+        ph = ((ph << 1) | 1) & full
+        mh = (mh << 1) & full
+        pv = (mh | ~(xv | ph)) & full
+        mv = ph & xv
+    return score
 
 
 def cer_wer(hyp_words, ref_words):
