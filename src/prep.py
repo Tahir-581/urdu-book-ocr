@@ -36,8 +36,8 @@ def split_spread(im: Image.Image):
     return [("R", im.crop((cut, 0, w, h))), ("L", im.crop((0, 0, cut, h)))]
 
 
-def prep(pdf: Path, pages, dpi=200, mask_bottom=0.0):
-    PAGES.mkdir(parents=True, exist_ok=True)
+def prep(pdf: Path, pages, dpi=200, mask_bottom=0.0, out_dir: Path = PAGES):
+    out_dir.mkdir(parents=True, exist_ok=True)
     out = []
     for n in pages:
         im = render(pdf, n, dpi)
@@ -45,7 +45,7 @@ def prep(pdf: Path, pages, dpi=200, mask_bottom=0.0):
             w, h = im.size
             im.paste(255, (0, int(h * (1 - mask_bottom)), w, h))
         for side, part in split_spread(im):
-            dest = PAGES / f"{pdf.stem}-{n:03d}{side}.png"
+            dest = out_dir / f"{pdf.stem}-{n:03d}{side}.png"
             part.save(dest, optimize=True)
             out.append(dest)
     return out

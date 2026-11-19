@@ -7,89 +7,14 @@ Usage:
 Output: out/baseline/<provider>__<model>/<page>.txt plus a runs.jsonl with latency/usage.
 Keys are read from .env (GEMINI_API_KEY, OPENROUTER_API_KEY) and never printed.
 """
-import base64, json, os, sys, time, urllib.request, urllib.error
+import json, os, sys, time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from src.engines import load_env, http, gemini, openrouter  # noqa: E402
+
 OUT = ROOT / "out" / "baseline"
-
-PROMPT = (
-    "Transcribe the Urdu text on this scanned book page exactly as printed.\n"
-    "Rules:\n"
-    "- Output Urdu in Unicode, one printed line per output line, in reading order.\n"
-    "- Copy what is printed. Do not correct spelling, modernise, complete, or paraphrase anything.\n"
-    "- If a word is unreadable, write [?] in its place instead of guessing.\n"
-    "- Skip watermarks and website names that are not part of the book.\n"
-    "- Put the printed page number, if any, on the first line as: PAGE: <number>\n"
-    "- If the image shows two pages, transcribe the RIGHT page first, then a line '---', then the LEFT page.\n"
-    "Output only the transcription."
-)
-
-
-def load_env():
-    env = ROOT / ".env"
-    if env.exists():
-        for line in env.read_text().splitlines():
-            if "=" in line and not line.strip().startswith("#"):
-                k, v = line.split("=", 1)
-                if v.strip():
-                    os.environ.setdefault(k.strip(), v.strip())
-
-
-def http(url, body=None, headers=None, timeout=180, retries=4):
-    """POST/GET JSON. Retries 429/500/503 with exponential backoff (free tiers are flaky)."""
-    data = json.dumps(body).encode() if body is not None else None
-    for attempt in range(retries + 1):
-        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **(headers or {})})
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                return json.loads(r.read())
-        except urllib.error.HTTPError as e:
-            msg = e.read().decode()[:400]
-            if e.code in (429, 500, 502, 503) and attempt < retries:
-                wait = min(60, 5 * 2 ** attempt)
-                print(f"    retry in {wait}s after HTTP {e.code}", file=sys.stderr)
-                time.sleep(wait)
-                continue
-            raise RuntimeError(f"HTTP {e.code}: {msg}") from None
-
-
-def b64(path):
-    return base64.b64encode(Path(path).read_bytes()).decode()
-
-
-def gemini(model, image):
-    key = os.environ["GEMINI_API_KEY"]
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-    body = {
-        "contents": [{"parts": [{"text": PROMPT}, {"inline_data": {"mime_type": "image/png", "data": b64(image)}}]}],
-        "generationConfig": {"temperature": 0},
-    }
-    r = http(url, body, {"x-goog-api-key": key})
-    cand = (r.get("candidates") or [{}])[0]
-    parts = cand.get("content", {}).get("parts", [])
-    text = "".join(p.get("text", "") for p in parts)
-    if not text.strip():
-        # Empty output with HTTP 200 happens (e.g. finishReason RECITATION on famous text). Never save it as a result.
-        raise RuntimeError(f"empty output, finishReason={cand.get('finishReason')} "
-                           f"promptFeedback={r.get('promptFeedback')}")
-    return text, r.get("usageMetadata")
-
-
-def openrouter(model, image):
-    key = os.environ["OPENROUTER_API_KEY"]
-    body = {
-        "model": model,
-        "temperature": 0,
-        "messages": [{"role": "user", "content": [
-            {"type": "text", "text": PROMPT},
-            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64(image)}"}},
-        ]}],
-    }
-    r = http("https://openrouter.ai/api/v1/chat/completions", body, {"Authorization": f"Bearer {key}"})
-    if "error" in r:
-        raise RuntimeError(str(r["error"])[:400])
-    return r["choices"][0]["message"]["content"], r.get("usage")
 
 
 def list_models():
