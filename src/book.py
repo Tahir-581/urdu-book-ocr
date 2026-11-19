@@ -142,20 +142,22 @@ def main():
     pages_dir = book_dir / "pages"
     t0 = time.time()
 
-    # 1. Prepare page images (skip PDF pages already rendered).
-    for n in page_range(args.pages):
-        if not list(pages_dir.glob(f"{args.pdf.stem}-{n:03d}*.png")):
-            for p in prep(args.pdf, [n], args.dpi, args.mask_bottom, out_dir=pages_dir):
-                log(f"prep {p.name}")
-    wanted = {f"{args.pdf.stem}-{n:03d}" for n in page_range(args.pages)}
-    images = sorted((p for p in pages_dir.glob("*.png") if re.sub(r"[RL]$", "", p.stem) in wanted), key=order_key)
-    log(f"{len(images)} page images ready")
-
-    # 2. Transcribe with both models in parallel (each engine has its own worker pool and quota).
+    # 1+2. Prepare each page image, then hand it straight to both models (each engine has its own
+    # worker pool and quota), so transcription starts while later pages are still being rendered.
+    images = []
     with (book_dir / "runs.jsonl").open("a") as runs:
         a, b = Engine(args.a, book_dir, runs), Engine(args.b, book_dir, runs)
         with ThreadPoolExecutor(args.workers_a) as pa, ThreadPoolExecutor(args.workers_b) as pb:
-            futs = [pa.submit(a.run, img) for img in images] + [pb.submit(b.run, img) for img in images]
+            futs = []
+            for n in page_range(args.pages):
+                ready = sorted(pages_dir.glob(f"{args.pdf.stem}-{n:03d}*.png"), key=order_key)
+                if not ready:
+                    ready = prep(args.pdf, [n], args.dpi, args.mask_bottom, out_dir=pages_dir)
+                    log("prep " + " ".join(p.name for p in ready))
+                for img in ready:
+                    images.append(img)
+                    futs += [pa.submit(a.run, img), pb.submit(b.run, img)]
+            log(f"{len(images)} page images ready")
             for f in futs:
                 f.result()
 
