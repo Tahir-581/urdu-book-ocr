@@ -11,7 +11,8 @@ For the two-model flagging (A = primary, B = checker):
   burden        share of A's words that are flagged (what a human must check)
 
 Usage:
-  python -m src.evaluate                        # default model dirs, writes out/eval/report.md + .json
+  python -m src.evaluate                        # default: A = 3.1 Flash-Lite, checkers = 3.5 Flash-Lite + Gemma 4
+  python -m src.evaluate MODEL_A CHECKER [CHECKER...]   # model dirs under out/baseline
 """
 import json, subprocess, sys
 from difflib import SequenceMatcher
@@ -96,8 +97,13 @@ def flags_of(a_words, b_words):
     return flag, gap
 
 
-def flag_eval(a_words, b_words, ref_words):
-    flag, gap = flags_of(a_words, b_words)
+def flag_eval(a_words, b_lists, ref_words):
+    """b_lists: one word list per checker; a word is flagged if any checker disagrees."""
+    flag, gap = [False] * len(a_words), set()
+    for b_words in b_lists:
+        f, g = flags_of(a_words, b_words)
+        flag = [x or y for x, y in zip(flag, f)]
+        gap |= g
     errors = caught = 0
     missed = []
     for tag, i1, i2, j1, j2 in SequenceMatcher(None, a_words, ref_words, autojunk=False).get_opcodes():
@@ -131,7 +137,9 @@ def archive_org_words(stem):
     return [n for w in txt.split() if (n := norm(w))]
 
 
-def main(model_a="gemini__gemini-3.5-flash", model_b="gemini__gemini-3.1-flash-lite"):
+def main(model_a="gemini__gemini-3.1-flash-lite", *model_bs):
+    model_bs = model_bs or ("gemini__gemini-3.5-flash-lite", "gemini__gemma-4-31b-it")
+    model_b = " + ".join(model_bs)
     models = sorted(p.name for p in BASE.iterdir() if p.is_dir())
     rows, flag_rows, ia_rows = [], [], []
     spreads = {}
@@ -143,9 +151,9 @@ def main(model_a="gemini__gemini-3.5-flash", model_b="gemini__gemini-3.1-flash-l
             if f.exists() and f.read_text().strip():
                 c, w = cer_wer(words(f.read_text()), ref)
                 rows.append({"page": stem, "model": m, "cer": c, "wer": w, "ref_words": len(ref)})
-        fa, fb = BASE / model_a / gt.name, BASE / model_b / gt.name
-        if fa.exists() and fb.exists():
-            r = flag_eval(words(fa.read_text()), words(fb.read_text()), ref)
+        fa, fbs = BASE / model_a / gt.name, [BASE / b / gt.name for b in model_bs]
+        if fa.exists() and all(fb.exists() for fb in fbs):
+            r = flag_eval(words(fa.read_text()), [words(fb.read_text()) for fb in fbs], ref)
             flag_rows.append({"page": stem, "words": len(ref), **r})
         # archive.org: compare whole PDF page; Umrao images are spreads (R+L halves of one PDF page)
         key = stem.rstrip("RL")

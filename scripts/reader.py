@@ -76,7 +76,7 @@ function render(i, flashLine){
   history.replaceState(null,'','#'+p.id);
   const t = $('#body'); t.innerHTML = '';
   $('#meta').innerHTML = `<span>${p.printed ? 'Printed page ' + p.printed + ' · ' : ''}${p.id}</span>` +
-    (p.lines ? `<span>${p.stats.words} words · ${p.stats.flagged_words} flagged</span>` : '');
+    (p.lines ? `<span>${p.stats.words} words · ${p.stats.flagged_words} flagged${p.fallback ? ' · text from fallback model ' + p.a : ''}</span>` : '');
   if (!p.lines){ t.innerHTML = '<div class="empty">This page has not been transcribed yet.</div>'; return; }
   p.lines.forEach((line, li) => { const d = document.createElement('div'); d.className = 'ln'; d.id = 'l'+li;
     line.forEach(([w,a],k) => { if (k) d.append(' ');
@@ -92,9 +92,9 @@ function render(i, flashLine){
 $('#body').addEventListener('click', e => { const s = e.target.closest('.f,.m'); const pop = $('#pop'); if (!s){ pop.hidden = true; return; }
   const A = s.dataset.a, Bv = s.dataset.b;
   pop.innerHTML = s.classList.contains('m')
-    ? `Only the second model read a word here:<div class="u">${Bv}</div>Check the scan.`
-    : (Bv ? `The two models disagree. Shown: <div class="u">${A}</div>Second model read: <div class="u">${Bv}</div>Check the scan.`
-          : `The second model has no word here: it skipped this word, or it is the tail of the disagreement just before. Check the scan.`);
+    ? `Only a checker model read a word here:<div class="u">${Bv}</div>Check the scan.`
+    : (Bv ? `The models disagree. Shown: <div class="u">${A}</div>Checker model(s) read: <div class="u">${Bv}</div>Check the scan.`
+          : `A checker model has no word here: it skipped this word, or it is the tail of the disagreement just before. Check the scan.`);
   const r = s.getBoundingClientRect(); pop.hidden = false;
   pop.style.top = (r.bottom + scrollY + 6) + 'px';
   pop.style.left = Math.max(8, Math.min(r.left + scrollX, innerWidth - pop.offsetWidth - 8)) + 'px'; });
@@ -132,6 +132,7 @@ def main():
     (site / "img").mkdir(parents=True, exist_ok=True)
 
     pages, plain, flagged = [], [], []
+    used, checkers = {}, set()
     for img in sorted((src / "pages").glob("*.png"), key=order_key):
         jpg = site / "img" / f"{img.stem}.jpg"
         if not jpg.exists() or jpg.stat().st_mtime < img.stat().st_mtime:
@@ -147,7 +148,10 @@ def main():
             continue
         d = json.loads(cmp.read_text())
         printed = d["stats"].get("page_a")
-        pages.append({"id": img.stem, "printed": printed, "lines": d["lines"], "stats": d["stats"]})
+        pages.append({"id": img.stem, "printed": printed, "lines": d["lines"], "stats": d["stats"],
+                      "a": d["a"].split(":", 1)[1], "fallback": d.get("fallback", False)})
+        used[d["a"]] = used.get(d["a"], 0) + 1
+        checkers.update(d["b"] if isinstance(d["b"], list) else [d["b"]])
         head = f"\n=== {img.stem}" + (f" · page {printed}" if printed else "") + " ===\n"
         plain.append(head + "\n".join(" ".join(w for w, _ in line if w) for line in d["lines"]) + "\n")
         flagged.append(head + "\n".join(" ".join(
@@ -157,7 +161,9 @@ def main():
     done = [p for p in pages if p["lines"]]
     words = sum(p["stats"]["words"] for p in done)
     nflag = sum(p["stats"]["flagged_words"] for p in done)
-    header = (f"{a.title} — {a.author}\nMachine transcription (Gemini 3.5 Flash), checked against Gemini 3.1 Flash-Lite.\n"
+    name = lambda spec: spec.split(":", 1)[1]
+    models = ", ".join(f"{name(m)} ({n} pages)" for m, n in sorted(used.items(), key=lambda kv: -kv[1]))
+    header = (f"{a.title} — {a.author}\nMachine transcription by {models}; checked against {', '.join(map(name, sorted(checkers)))}.\n"
               f"{len(done)}/{len(pages)} pages, {words} words, {nflag} words flagged where the models disagree.\n"
               "Source scan: archive.org (public domain). Built with https://github.com/Tahir-581/urdu-book-ocr\n")
     (site / f"{a.book}.txt").write_text(header + "".join(plain))

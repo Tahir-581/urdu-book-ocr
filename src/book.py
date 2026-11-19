@@ -23,8 +23,8 @@ from src.prep import prep  # noqa: E402
 from src.compare import compare  # noqa: E402
 from src.engines import load_env, transcribe, dirname, QuotaExhausted  # noqa: E402
 
-DEFAULT_A = "gemini:gemini-3.5-flash"
-DEFAULT_B = "gemini:gemini-3.1-flash-lite"
+DEFAULT_A = "gemini:gemini-3.1-flash-lite"
+DEFAULT_B = "gemini:gemini-3.5-flash-lite,gemini:gemma-4-31b-it"  # see docs/checker-choice.md
 _lock = threading.Lock()
 
 
@@ -86,17 +86,18 @@ class Engine:
         self.failed += 1
 
 
-def summarize(book_dir: Path, images, a: Engine, b: Engine, wall):
+def summarize(book_dir: Path, images, engines, wall):
     ids = [p.stem for p in images]
-    have_a = {p.stem for p in a.dir.glob("*.txt")}
-    have_b = {p.stem for p in b.dir.glob("*.txt")}
-    words = flagged = lines = flagged_lines = 0
+    have = {e.spec: {p.stem for p in e.dir.glob("*.txt")} for e in engines}
+    words = flagged = lines = flagged_lines = fallback = 0
     for i in ids:
         f = book_dir / "compare" / f"{i}.json"
         if f.exists():
-            s = json.loads(f.read_text())["stats"]
+            d = json.loads(f.read_text())
+            s = d["stats"]
             words += s["words"]; flagged += s["flagged_words"]
             lines += s["lines"]; flagged_lines += s["flagged_lines"]
+            fallback += bool(d.get("fallback"))
     usage = {}
     for line in (book_dir / "runs.jsonl").read_text().splitlines():
         r = json.loads(line)
@@ -111,9 +112,10 @@ def summarize(book_dir: Path, images, a: Engine, b: Engine, wall):
                                (m.get("thoughtsTokenCount") or 0)
     st = {
         "pages": len(ids),
-        "transcribed": {a.spec: len(have_a & set(ids)), b.spec: len(have_b & set(ids))},
-        "missing": {a.spec: sorted(set(ids) - have_a), b.spec: sorted(set(ids) - have_b)},
+        "transcribed": {k: len(v & set(ids)) for k, v in have.items()},
+        "missing": {k: sorted(set(ids) - v) for k, v in have.items()},
         "compared": sum((book_dir / "compare" / f"{i}.json").exists() for i in ids),
+        "fallback_pages": fallback,
         "words": words, "flagged_words": flagged,
         "flag_rate": round(flagged / max(1, words), 4),
         "lines": lines, "flagged_lines": flagged_lines,
@@ -130,24 +132,30 @@ def main():
     ap.add_argument("pdf", type=Path)
     ap.add_argument("--pages", required=True, help="PDF pages, e.g. 2-100 or 5,9,20-30")
     ap.add_argument("--a", default=DEFAULT_A, help="primary model (its text is the output)")
-    ap.add_argument("--b", default=DEFAULT_B, help="checker model (disagreement = flag)")
-    ap.add_argument("--workers-a", type=int, default=3)
-    ap.add_argument("--workers-b", type=int, default=2)
+    ap.add_argument("--b", default=DEFAULT_B,
+                    help="checker model(s), comma-separated; a word is flagged if any checker disagrees")
+    ap.add_argument("--workers-a", type=int, default=2)
+    ap.add_argument("--workers-b", default="4", help="workers per checker, comma-separated or one number")
     ap.add_argument("--dpi", type=int, default=200)
     ap.add_argument("--mask-bottom", type=float, default=0.0)
     args = ap.parse_args()
     load_env()
+    checker_specs = [c.strip() for c in args.b.split(",") if c.strip()]
+    wb = [int(x) for x in args.workers_b.split(",")]
+    wb = (wb * len(checker_specs))[:len(checker_specs)] if len(wb) == 1 else wb
 
     book_dir = ROOT / "out" / "books" / args.pdf.stem
     pages_dir = book_dir / "pages"
     t0 = time.time()
 
-    # 1+2. Prepare each page image, then hand it straight to both models (each engine has its own
+    # 1+2. Prepare each page image, then hand it straight to every model (each engine has its own
     # worker pool and quota), so transcription starts while later pages are still being rendered.
     images = []
     with (book_dir / "runs.jsonl").open("a") as runs:
-        a, b = Engine(args.a, book_dir, runs), Engine(args.b, book_dir, runs)
-        with ThreadPoolExecutor(args.workers_a) as pa, ThreadPoolExecutor(args.workers_b) as pb:
+        a = Engine(args.a, book_dir, runs)
+        checkers = [Engine(c, book_dir, runs) for c in checker_specs]
+        pools = [ThreadPoolExecutor(args.workers_a)] + [ThreadPoolExecutor(w) for w in wb]
+        try:
             futs = []
             for n in page_range(args.pages):
                 ready = sorted(pages_dir.glob(f"{args.pdf.stem}-{n:03d}*.png"), key=order_key)
@@ -156,24 +164,33 @@ def main():
                     log("prep " + " ".join(p.name for p in ready))
                 for img in ready:
                     images.append(img)
-                    futs += [pa.submit(a.run, img), pb.submit(b.run, img)]
+                    futs += [pool.submit(e.run, img) for pool, e in zip(pools, [a] + checkers)]
             log(f"{len(images)} page images ready")
             for f in futs:
                 f.result()
+        finally:
+            for pool in pools:
+                pool.shutdown()
 
-    # 3. Compare wherever both transcriptions exist.
+    # 3. Compare A against every checker that has the page. If A refused or failed the page
+    # (e.g. RECITATION on famous text), the first checker with a text becomes the primary and is
+    # flagged against the remaining checkers; the page is marked as fallback.
     (book_dir / "compare").mkdir(exist_ok=True)
     for img in images:
-        fa, fb = a.dir / f"{img.stem}.txt", b.dir / f"{img.stem}.txt"
-        dest = book_dir / "compare" / f"{img.stem}.json"
-        if fa.exists() and fb.exists():
-            lines, stats = compare(fa.read_text(), fb.read_text())
-            dest.write_text(json.dumps({"page": img.stem, "a": args.a, "b": args.b,
-                                        "stats": stats, "lines": lines}, ensure_ascii=False))
+        texts = [(e.spec, e.dir / f"{img.stem}.txt") for e in [a] + checkers]
+        texts = [(spec, f) for spec, f in texts if f.exists()]
+        if len(texts) < 2:
+            (book_dir / "compare" / f"{img.stem}.json").unlink(missing_ok=True)  # stale result from other models
+            continue
+        (primary, fa), rest = texts[0], texts[1:]
+        lines, stats = compare(fa.read_text(), *(f.read_text() for _, f in rest))
+        (book_dir / "compare" / f"{img.stem}.json").write_text(json.dumps(
+            {"page": img.stem, "a": primary, "b": [spec for spec, _ in rest], "fallback": primary != args.a,
+             "stats": stats, "lines": lines}, ensure_ascii=False))
 
-    st = summarize(book_dir, images, a, b, time.time() - t0)
-    log(f"done this run: {a.spec} +{a.done} ok / {a.failed} failed; {b.spec} +{b.done} ok / {b.failed} failed")
-    log("status: " + json.dumps({k: st[k] for k in ("pages", "transcribed", "compared", "flag_rate")}))
+    st = summarize(book_dir, images, [a] + checkers, time.time() - t0)
+    log("done this run: " + "; ".join(f"{e.spec} +{e.done} ok / {e.failed} failed" for e in [a] + checkers))
+    log("status: " + json.dumps({k: st[k] for k in ("pages", "transcribed", "compared", "fallback_pages", "flag_rate")}))
     missing = sum(len(v) for v in st["missing"].values())
     if missing:
         log(f"{missing} transcriptions still missing; re-run the same command to retry them")

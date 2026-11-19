@@ -40,22 +40,12 @@ def parse(text: str):
     return page, lines
 
 
-def compare(text_a: str, text_b: str):
-    """Align B against A word by word (across line breaks).
-
-    Returns a list of lines; each line is a list of (word, alt) where alt is None when both
-    models agree, or B's reading ('' if B omitted the word) when they disagree.
-    Also returns the B-only insertions so missing words in A are visible.
-    """
-    page_a, lines_a = parse(text_a)
-    page_b, lines_b = parse(text_b)
-    words_a = [(li, w) for li, line in enumerate(lines_a) for w in line.split()]
-    words_b = [w for line in lines_b for w in line.split()]
-    na = [norm(w) for _, w in words_a]
+def _align(na, words_b):
+    """Disagreements of one checker against A's normalized words.
+    Returns per-A-word reading (None = agrees), per-A-word group id, and B-only insertions."""
     nb = [norm(w) for w in words_b]
-
-    alt = [None] * len(words_a)
-    group = [None] * len(words_a)  # A words from the same disagreement share a group id
+    alt = [None] * len(na)
+    group = [None] * len(na)  # A words from the same disagreement share a group id
     inserted = {}  # index in A before which B has extra words
     sm = SequenceMatcher(None, na, nb, autojunk=False)
     for gid, (tag, i1, i2, j1, j2) in enumerate(sm.get_opcodes()):
@@ -66,36 +56,81 @@ def compare(text_a: str, text_b: str):
             continue
         b_span = " ".join(words_b[j1:j2])
         if tag == "insert":
-            inserted.setdefault(i1, []).append(b_span)
+            inserted[i1] = b_span
             continue
         for k in range(i1, i2):
             alt[k], group[k] = b_span, gid
+    return alt, group, inserted
+
+
+def _join(readings):
+    """One checker: its reading as is ('' = it has no word here). Several: 'x / —'."""
+    readings = list(dict.fromkeys(readings))  # unique, in checker order
+    if len(readings) == 1:
+        return readings[0]
+    return " / ".join(r or "—" for r in readings)
+
+
+def compare(text_a: str, *texts_b: str):
+    """Align each checker B against A word by word (across line breaks).
+
+    Returns a list of lines; each line is a list of (word, alt) where alt is None when every
+    checker agrees with A, or the disagreeing checkers' reading(s) otherwise ('' if the only
+    disagreeing checker omitted the word; several readings are joined with ' / ').
+    B-only insertions appear as ('', reading) so words missing from A are visible.
+    """
+    page_a, lines_a = parse(text_a)
+    words_a = [(li, w) for li, line in enumerate(lines_a) for w in line.split()]
+    na = [norm(w) for _, w in words_a]
+    per_b = []
+    page_b = None
+    for text_b in texts_b:
+        pb, lines_b = parse(text_b)
+        page_b = page_b or pb
+        per_b.append(_align(na, [w for line in lines_b for w in line.split()]))
+
+    n = len(words_a)
+    alt = [None] * n
+    group = [None] * n
+    inserted = {}
+    for k in range(n + 1):
+        ins = [b[2][k] for b in per_b if k in b[2]]
+        if ins:
+            inserted[k] = _join(ins)
+        if k == n:
+            break
+        reads = [b[0][k] for b in per_b if b[0][k] is not None]
+        if reads:
+            alt[k] = _join(reads)
+            group[k] = tuple(b[1][k] for b in per_b)
+
+    def same_group(g1, g2):
+        return g1 is not None and g2 is not None and any(x is not None and x == y for x, y in zip(g1, g2))
 
     out = [[] for _ in lines_a]
-    prev_gid = None
+    prev_g = None
     for k, (li, w) in enumerate(words_a):
         if k in inserted:
-            out[li].append(("", " ".join(inserted[k])))
-            prev_gid = None
+            out[li].append(("", inserted[k]))
+            prev_g = None
         g = group[k]
         # Merge consecutive A words of one disagreement (on the same line) into a single chunk.
-        if g is not None and g == prev_gid and out[li] and out[li][-1][1] is not None:
+        if same_group(g, prev_g) and out[li] and out[li][-1][1] is not None:
             out[li][-1] = (out[li][-1][0] + " " + w, out[li][-1][1])
-        elif g is not None and g == prev_gid:
-            out[li].append((w, ""))  # continuation on a new line: B's text already shown on the first chunk
+        elif same_group(g, prev_g):
+            out[li].append((w, ""))  # continuation on a new line: the reading is already on the first chunk
         else:
             out[li].append((w, alt[k]))
-        prev_gid = g
-    if len(words_a) in inserted and out:
-        out[-1].append(("", " ".join(inserted[len(words_a)])))
+        prev_g = g
+    if n in inserted and out:
+        out[-1].append(("", inserted[n]))
 
-    n_words = len(words_a)
     n_flag = sum(1 for line in out for w, a in line if a is not None)
     n_lines_flag = sum(1 for line in out if any(a is not None for _, a in line))
     stats = {
         "page_a": page_a, "page_b": page_b,
-        "words": n_words, "flagged_words": n_flag,
+        "words": n, "flagged_words": n_flag,
         "lines": len(lines_a), "flagged_lines": n_lines_flag,
-        "agreement": round(1 - n_flag / max(1, n_words), 4),
+        "agreement": round(1 - n_flag / max(1, n), 4),
     }
     return out, stats
