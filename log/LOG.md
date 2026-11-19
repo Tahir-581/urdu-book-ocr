@@ -56,3 +56,11 @@ Daily human notes. Full Claude Code transcripts: `~/.claude/projects/-home-tahir
 - **What failed (tool):** the first version of the review page kept a literal `+` from "only model B has this" words in the downloaded text. Caught when it showed up as a fake "silent error"; fixed in the file and the tool.
 - **What failed (me):** one "silent error" was actually *my* ground-truth mistake. I wrote `دور`; the scan clearly shows `ڈور` (kite string). In another spot the models disagreed (`تلکل` vs `نکل`) and I picked A's reading, but the scan looks like `تکل`.
 - **Unlearned:** "the human is the ground truth." A human reviewer choosing between two model readings anchors on them. The fix: zoomed crops for flagged words, and a second pass on disagreements where the reviewer picked a model reading.
+
+### Whole-book runner + reader (evening)
+- Claude wrote `src/book.py`: one command converts a PDF range (prep → both models in parallel → compare). Everything finished is on disk, so a crash or quota stop resumes on re-run. Every call is logged with time and tokens (`runs.jsonl`, `status.json`).
+- Model calls moved into `src/engines.py`. A 429 that says the *daily* quota is gone now stops that model cleanly instead of retrying all night; other 429s respect Google's `retryDelay`; timeouts are retried.
+- Smoke test (Umrao PDF page 3, two pages): works, 1.6% of words flagged. But Gemini 3.5 Flash took **~5 minutes per page** under load (two read timeouts, then 503 "high demand") versus ~55 s yesterday. Flash-Lite: ~18 s. Free-tier latency swings 5×, so "time per book" has to be reported as a range.
+- **What failed (pipeline design):** the first full run rendered all 99 spreads before sending any page to a model (~9 s each, ~15 min idle). Restarted so each page goes to the models as soon as it's rendered; already-rendered pages were reused.
+- Full *Umrao Jaan Ada* run started: PDF pages 2–100 (page 1 is the cover) = 198 pages.
+- Claude wrote `scripts/reader.py`: a static reader site (scan | text, flagged words highlighted with the other model's reading on tap, full-text search that folds ھ/ہ etc., `.txt` and "text with flags" downloads, phone layout). Checked with headless Chrome screenshots on desktop and phone width.
