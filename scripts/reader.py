@@ -163,7 +163,7 @@ def main():
     nflag = sum(p["stats"]["flagged_words"] for p in done)
     name = lambda spec: spec.split(":", 1)[1]
     models = ", ".join(f"{name(m)} ({n} pages)" for m, n in sorted(used.items(), key=lambda kv: -kv[1]))
-    header = (f"{a.title} — {a.author}\nMachine transcription by {models}; checked against {', '.join(map(name, sorted(checkers)))}.\n"
+    header = (f"{a.title}, {a.author}\nMachine transcription by {models}; checked against {', '.join(map(name, sorted(checkers)))}.\n"
               f"{len(done)}/{len(pages)} pages, {words} words, {nflag} words flagged where the models disagree.\n"
               "Source scan: archive.org (public domain). Built with https://github.com/Tahir-581/urdu-book-ocr\n")
     (site / f"{a.book}.txt").write_text(header + "".join(plain))
@@ -190,7 +190,7 @@ def main():
 <div class="panel text" id="txt"><div class="meta" id="meta"></div><div id="body"></div></div></main>
 <script>window.BOOK={json.dumps(book, ensure_ascii=False, separators=(",", ":"))};{JS}</script></body></html>"""
     (site / "index.html").write_text(doc)
-    print(f"wrote {site/'index.html'} — {summary}")
+    print(f"wrote {site/'index.html'}: {summary}")
 
 
 if __name__ == "__main__":

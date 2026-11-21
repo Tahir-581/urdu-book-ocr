@@ -64,11 +64,11 @@ def _align(na, words_b):
 
 
 def _join(readings):
-    """One checker: its reading as is ('' = it has no word here). Several: 'x / —'."""
+    """One checker: its reading as is ('' = it has no word here). Several: 'x / (none)'."""
     readings = list(dict.fromkeys(readings))  # unique, in checker order
     if len(readings) == 1:
         return readings[0]
-    return " / ".join(r or "—" for r in readings)
+    return " / ".join(r or "(none)" for r in readings)
 
 
 def compare(text_a: str, *texts_b: str):

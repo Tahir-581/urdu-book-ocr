@@ -16,7 +16,7 @@ Half of the 8 silent errors with the 3 Flash preview checker are izafat marks (`
 
 ## Update: every Gemini "Flash" model is capped at 20 requests/day
 
-3 Flash preview also hit `GenerateRequestsPerDayPerProjectPerModel-FreeTier` = 20 after 8 test pages + 13 book pages, so it can't check a 198-page book either. The free models with a usable daily quota are the Flash-**Lite** models and Gemma 4. Gemma 4 31B through OpenRouter's free pool failed on every page (shared-pool 429); through the Gemini API it works but takes 2–6 min/page (503 "high demand" retries).
+3 Flash preview also hit `GenerateRequestsPerDayPerProjectPerModel-FreeTier` = 20 after 8 test pages + 13 book pages, so it can't check a 198-page book either. The free models with a usable daily quota are the Flash-**Lite** models and Gemma 4. Gemma 4 31B through OpenRouter's free pool failed on every page (shared-pool 429); through the Gemini API it works but takes 2 to 6 min/page (503 "high demand" retries).
 
 Single weak checkers miss different errors, so I tested flagging a word when **any** checker disagrees:
 

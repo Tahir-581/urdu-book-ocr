@@ -1,10 +1,10 @@
-# intent.md — Harf: scanned Urdu books → trustworthy text
+# intent.md: Harf: scanned Urdu books → trustworthy text
 
 > Written on day 1 (2026-11-18), before building. This file stays frozen; what changed is recorded in `directive.md` and the write-up.
 
 ## The problem
 
-Most Urdu books — novels, classics, out-of-print literature — exist online only as **scanned page images**. You can read them, but you cannot search them, copy a line, quote them, listen to them with TTS, or feed them to any language tool.
+Most Urdu books (novels, classics, out-of-print literature) exist online only as **scanned page images**. You can read them, but you cannot search them, copy a line, quote them, listen to them with TTS, or feed them to any language tool.
 
 "Searchable" versions exist, but they aren't usable. archive.org already ran OCR on the two books I picked. A line from *Taubat-un-Nasuh* (Deputy Nazir Ahmad, 1874) as archive.org stores it:
 
@@ -25,7 +25,7 @@ That is gibberish. Dedicated Urdu OCR tools exist (CLE Urdu OCR, i2OCR, Tesserac
 1. **Typefaces vary.** Nastaliq is cursive, with stacked letters on a slanting baseline. Older Naskh-style prints come with noise, skew and bleed-through.
 2. **Real scans are messy.** Two-page spreads, watermarks (e.g. `Marfat.com`), page numbers, running headers and footnotes all have to be handled.
 3. **Vision LLMs hallucinate.** They quietly "correct" words and autocomplete well-known text. In literature, a confident wrong word is worse than a visible gap.
-4. **It has to work at book scale.** That means 100–500 pages with consistent output, on free-tier limits.
+4. **It has to work at book scale.** That means 100 to 500 pages with consistent output, on free-tier limits.
 5. **Copy-pasted Urdu often breaks.** Right-to-left order and letter shaping are frequently wrong in PDF text layers.
 
 ## What I will build (in 5 days)
@@ -55,7 +55,7 @@ A pipeline plus a reader:
 - Flagging catches **≥ 80% of lines that contain errors** while flagging **≤ 25% of all lines**. A reviewer then only checks the flagged lines.
 - One full book is converted on free-tier APIs, with cost and time reported.
 
-Numbers for each baseline will be measured on day 1–2 and reported honestly, including where the pipeline doesn't win.
+Numbers for each baseline will be measured on day 1 to 2 and reported honestly, including where the pipeline doesn't win.
 
 ## How I'll use AI
 
