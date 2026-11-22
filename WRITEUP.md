@@ -76,7 +76,7 @@ Ground truth: **14 hand-verified pages, 2,803 words**, both typefaces (6 Naskh p
 - The first book run rendered all 99 spreads before calling any model (15 idle minutes). Rewritten to stream.
 - Gemini 3.5 Flash, then 3 Flash preview, both hit the 20/day cap mid-book. Two checker plans died before the final one.
 - Flash-Lite refused 6 pages of *Umrao Jaan Ada* with `RECITATION` (copyright filter on a public-domain novel).
-- Gemma 4: OpenRouter's free pool failed on every page; via the Gemini API it worked but spent most calls on 503 retries (531 calls for 95 pages at the time of the last snapshot).
+- Gemma 4: OpenRouter's free pool failed on every page; via the Gemini API it worked but spent most calls on 503 retries (97 of 198 pages checked after the final resume on day 5).
 
 ## 7. Reproduce
 

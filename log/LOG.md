@@ -86,7 +86,7 @@ Daily human notes. Full Claude Code transcripts: `~/.claude/projects/-home-tahir
 
 ## Day 5: 2026-11-22 (submission)
 
-- Resumed the book run for Gemma's remaining pages, then rebuilt the reader.
+- Resumed the book run for Gemma's remaining pages. After several hours of mostly 503 "high demand" errors it reached only 97 of 198 pages, so about half the book is checked by 3.5 Flash-Lite alone. Rebuilt and republished the reader with the final state.
 - Claude wrote `directive.md` (what changed from intent.md and why) and `WRITEUP.md` (problem, results, unlearning, AI usage, failures), updated the README, and published the reader on GitHub Pages.
 - **What failed (small):** the resume command failed at first with exit code 127, because `python` doesn't exist on this machine (only `python3`) and the old virtualenv was gone. Reran with `python3`.
 - I removed every em dash from the docs and the reader output. That included a punctuation-only edit to `intent.md`; its wording is unchanged.
