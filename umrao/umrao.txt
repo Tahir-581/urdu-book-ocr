@@ -1,6 +1,6 @@
 امراؤ جان ادا, مرزا ہادی رسوا
 Machine transcription by gemini-3.1-flash-lite (197 pages); checked against gemini-3.5-flash-lite, gemma-4-31b-it.
-197/198 pages, 68066 words, 4597 words flagged where the models disagree.
+197/198 pages, 68066 words, 4630 words flagged where the models disagree.
 Source scan: archive.org (public domain). Built with https://github.com/Tahir-581/urdu-book-ocr
 
 === umrao-002R ===
